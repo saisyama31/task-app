@@ -51,8 +51,13 @@ const userschema= new mongoose.Schema({
             required: true
         }
 
-    }]
+    }],
+    avatar: {
+        type: Buffer
+    }
 
+},{
+    timestamps:true
 })
 
 //relation between task and user so that we can find the task of each individual user
@@ -70,13 +75,14 @@ userschema.methods.toJSON = function(){
 
     delete userobject.password
     delete userobject.tokens
+    delete userobject.avatar
 
     return userobject
 }
 
 userschema.methods.generateauthtoken = async function(){
     const user=this
-    const token =jwt.sign({_id: user._id.toString() },'thisismynewcourse')
+    const token =jwt.sign({_id: user._id.toString() },process.env.JWT_SECRET)
     user.tokens =user.tokens.concat({ token })
     await user.save()
     return token

@@ -1,7 +1,13 @@
 const express= require('express')
+// used for file uploads (npm)
+const multer =require('multer')
+//npm used to covert all file types to png
+const sharp = require('sharp')
 //used to connect user.js (exports)
 const User =require('../models/user')
 const auth=require('../middleware/auth')
+
+const { sendwelcomeemail, sendcancelationemail }= require('../emails/account')
 const router = new express.Router()
 // post(to create data) vs get(to read data)
 
@@ -14,6 +20,7 @@ router.post('/users',async (req,res)=>{
 
     try{
         await user.save()
+        sendwelcomeemail(user.email,user.name)
         const token=await user.generateauthtoken()
         res.status(201).send({user,token})
     } catch (e){
@@ -21,17 +28,7 @@ router.post('/users',async (req,res)=>{
 
     }
 
-    //normal method
-    // save data to database
-
-    // user.save().then(()=>{
-    //     res.status(201).send(user)
-
-    // }).catch((error)=>{
-    //     res.status(400)
-    //     res.send(error)
-
-    // })
+    
 })
 
 router.post('/users/login',async(req,res)=>{
@@ -77,22 +74,7 @@ router.get('/users/me', auth ,async (req,res)=>{
 // then and catch are also know as promises
     res.send(req.user)
 })
-// //router parameter// get user by id
-// router.get('/users/:id',async (req,res)=>{
-//     const _id=req.params.id
 
-//     try{
-//         const user= await User.findById(_id)
-//         if(!user){
-//             return res.status(404).send()
-//         }
-//         res.send(user)
-
-//     }catch(e){
-//         res.status(500).send(e)
-//     }
-    
-// })
 
 //update user
 router.patch('/users/me',auth,async(req,res)=>{
@@ -124,6 +106,7 @@ router.patch('/users/me',auth,async(req,res)=>{
 router.delete('/users/me',auth ,async(req,res)=>{
     try{
          await req.user.remove()
+         sendcancelationemail(req.user.email , req.user.name)
          res.send(req.user)
 
     }catch(e){
@@ -132,4 +115,54 @@ router.delete('/users/me',auth ,async(req,res)=>{
     }
 
 })
+
+const upload=multer({
+    limits: {
+        fileSize: 1000000
+    },
+    fileFilter(req,file,cb){
+        if(!file.originalname.match(/\.(jpg|jpeg|png)$/)){
+            return cb(new Error('please upload the image'))
+
+        }
+        cb(undefined,true)
+    }
+})
+
+router.post('/users/me/avatar',auth, upload.single('avatar'),async(req,res)=>{
+    //user sharp
+    const buffer = await sharp(req.file.buffer).resize({width:250,height:250}).png().toBuffer()
+    req.user.avatar = buffer
+    await req.user.save()
+
+    res.send()
+},(error,req,res,next)=>{
+    res.status(400).send({error:error.message})
+})
+
+router.delete('/users/me/avatar',auth, async(req,res)=>{
+    req.user.avatar= undefined
+    await req.user.save()
+    res.status(200).send()
+})
+
+
+//get avatar or profile pic on chrome
+//http://localhost:3000/users/5f89a12bc631f50b441013c6(id of user)/avatar
+// <img src="http://localhost:3000/users/5f89a12bc631f50b441013c6/avatar"> use in html
+router.get('/users/:id/avatar',async(req,res)=>{
+    try{
+        const user= await User.findById(req.params.id)
+
+        if(!user || !user.avatar){
+            throw new Error()
+        }
+
+        res.set('Content-Type','image/png')
+        res.send(user.avatar)
+    }catch(e){
+        res.status(404).send()
+    }
+})
+
 module.exports =router 
